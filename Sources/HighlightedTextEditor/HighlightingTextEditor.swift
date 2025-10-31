@@ -97,6 +97,7 @@ public typealias EmptyCallback = () -> Void
 public typealias OnCommitCallback = EmptyCallback
 public typealias OnEditingChangedCallback = EmptyCallback
 public typealias OnTextChangeCallback = (_ editorContent: String) -> Void
+public typealias OnPasteCallback = (_ pasteboard: NSPasteboard) -> String?
 
 extension HighlightingTextEditor {
     var placeholderFont: SystemColorAlias { SystemColorAlias() }

@@ -32,6 +32,7 @@ public struct HighlightedTextEditor: NSViewRepresentable, HighlightingTextEditor
     private(set) var onCommit: OnCommitCallback?
     private(set) var onTextChange: OnTextChangeCallback?
     private(set) var onSelectionChange: OnSelectionChangeCallback?
+    private(set) var onPaste: OnPasteCallback?
     private(set) var introspect: IntrospectCallback?
 
     public init(
@@ -101,6 +102,25 @@ public extension HighlightedTextEditor {
             shouldChangeTextIn affectedCharRange: NSRange,
             replacementString: String?
         ) -> Bool {
+            // Check if this is a paste operation
+            if replacementString == nil, let onPaste = parent.onPaste {
+                let pasteboard = NSPasteboard.general
+
+                // Call the paste handler
+                if let customText = onPaste(pasteboard) {
+                    // Insert the custom text at the affected range
+                    if let textStorage = textView.textStorage {
+                        textStorage.replaceCharacters(in: affectedCharRange, with: customText)
+                        parent.text = textView.string
+
+                        // Move cursor after inserted text
+                        let newLocation = affectedCharRange.location + customText.count
+                        textView.setSelectedRange(NSRange(location: newLocation, length: 0))
+                    }
+                    return false // We handled it
+                }
+            }
+
             return true
         }
 
@@ -301,6 +321,12 @@ public extension HighlightedTextEditor {
     func selection(_ binding: Binding<NSRange>) -> Self {
         var editor = self
         editor.selection = binding
+        return editor
+    }
+
+    func onPaste(_ callback: @escaping OnPasteCallback) -> Self {
+        var editor = self
+        editor.onPaste = callback
         return editor
     }
 }
