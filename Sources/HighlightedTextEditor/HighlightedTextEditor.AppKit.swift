@@ -35,6 +35,8 @@ public struct HighlightedTextEditor: NSViewRepresentable, HighlightingTextEditor
     private(set) var onPaste: OnPasteCallback?
     private(set) var introspect: IntrospectCallback?
     private(set) var pasteboardTypes: [NSPasteboard.PasteboardType]?
+    private(set) var imageProvider: ImageProviderCallback?
+    private(set) var maxImageWidth: CGFloat?
 
     public init(
         text: Binding<String>,
@@ -74,7 +76,9 @@ public struct HighlightedTextEditor: NSViewRepresentable, HighlightingTextEditor
 
         let highlightedText = HighlightedTextEditor.getHighlightedText(
             text: text,
-            highlightRules: highlightRules
+            highlightRules: highlightRules,
+            imageProvider: imageProvider,
+            maxImageWidth: maxImageWidth ?? view.textView.frame.width
         )
 
         view.attributedText = highlightedText
@@ -353,6 +357,18 @@ public extension HighlightedTextEditor {
     func pasteboardTypes(_ types: [NSPasteboard.PasteboardType]) -> Self {
         var editor = self
         editor.pasteboardTypes = types
+        return editor
+    }
+
+    func imageProvider(_ callback: @escaping ImageProviderCallback) -> Self {
+        var editor = self
+        editor.imageProvider = callback
+        return editor
+    }
+
+    func maxImageWidth(_ width: CGFloat) -> Self {
+        var editor = self
+        editor.maxImageWidth = width
         return editor
     }
 }
