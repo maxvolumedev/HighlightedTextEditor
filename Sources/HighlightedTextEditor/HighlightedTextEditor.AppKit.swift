@@ -324,7 +324,7 @@ public extension HighlightedTextEditor {
         return editor
     }
 
-    func onPaste(_ callback: @escaping OnPasteCallback) -> Self {
+    public func onPaste(_ callback: @escaping OnPasteCallback) -> Self {
         var editor = self
         editor.onPaste = callback
         return editor
