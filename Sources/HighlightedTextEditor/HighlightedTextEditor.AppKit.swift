@@ -34,6 +34,7 @@ public struct HighlightedTextEditor: NSViewRepresentable, HighlightingTextEditor
     private(set) var onSelectionChange: OnSelectionChangeCallback?
     private(set) var onPaste: OnPasteCallback?
     private(set) var introspect: IntrospectCallback?
+    private(set) var pasteboardTypes: [NSPasteboard.PasteboardType]?
 
     public init(
         text: Binding<String>,
@@ -52,6 +53,16 @@ public struct HighlightedTextEditor: NSViewRepresentable, HighlightingTextEditor
     public func makeNSView(context: Context) -> ScrollableTextView {
         let textView = ScrollableTextView()
         textView.delegate = context.coordinator
+
+        // Configure custom pasteboard types if specified
+        if let pasteboardTypes = pasteboardTypes {
+            textView.textView.customReadablePasteboardTypes = pasteboardTypes
+            textView.textView.registerForDraggedTypes(pasteboardTypes)
+        }
+
+        // Set custom paste handler
+        textView.textView.customPasteHandler = onPaste
+
         runIntrospect(textView)
 
         return textView
@@ -95,33 +106,6 @@ public extension HighlightedTextEditor {
 
         init(_ parent: HighlightedTextEditor) {
             self.parent = parent
-        }
-
-        public func textView(
-            _ textView: NSTextView,
-            shouldChangeTextIn affectedCharRange: NSRange,
-            replacementString: String?
-        ) -> Bool {
-            // Check if this is a paste operation
-            if replacementString == nil, let onPaste = parent.onPaste {
-                let pasteboard = NSPasteboard.general
-
-                // Call the paste handler
-                if let customText = onPaste(pasteboard) {
-                    // Insert the custom text at the affected range
-                    if let textStorage = textView.textStorage {
-                        textStorage.replaceCharacters(in: affectedCharRange, with: customText)
-                        parent.text = textView.string
-
-                        // Move cursor after inserted text
-                        let newLocation = affectedCharRange.location + customText.count
-                        textView.setSelectedRange(NSRange(location: newLocation, length: 0))
-                    }
-                    return false // We handled it
-                }
-            }
-
-            return true
         }
 
         public func textDidBeginEditing(_ notification: Notification) {
@@ -174,6 +158,42 @@ public extension HighlightedTextEditor {
     }
 }
 
+// Custom NSTextView subclass to support custom pasteboard types
+public class CustomTextView: NSTextView {
+    var customReadablePasteboardTypes: [NSPasteboard.PasteboardType] = []
+    var customPasteHandler: ((NSPasteboard) -> String?)?
+
+    public override var readablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        if customReadablePasteboardTypes.isEmpty {
+            return super.readablePasteboardTypes
+        }
+        return super.readablePasteboardTypes + customReadablePasteboardTypes
+    }
+
+    public override func paste(_ sender: Any?) {
+        // Try custom paste handler first
+        if let handler = customPasteHandler,
+           let customText = handler(NSPasteboard.general) {
+            // Insert the custom text at the current selection
+            if let textStorage = textStorage {
+                let selectedRange = selectedRanges[0].rangeValue
+                textStorage.replaceCharacters(in: selectedRange, with: customText)
+
+                // Move cursor after inserted text
+                let newLocation = selectedRange.location + customText.count
+                setSelectedRange(NSRange(location: newLocation, length: 0))
+
+                // Notify delegate of the change
+                delegate?.textDidChange?(Notification(name: NSText.didChangeNotification, object: self))
+            }
+            return
+        }
+
+        // Fall back to default paste behavior
+        super.paste(sender)
+    }
+}
+
 public extension HighlightedTextEditor {
     final class ScrollableTextView: NSView {
         weak var delegate: NSTextViewDelegate?
@@ -206,7 +226,7 @@ public extension HighlightedTextEditor {
             return scrollView
         }()
 
-        public lazy var textView: NSTextView = {
+        public lazy var textView: CustomTextView = {
             let contentSize = scrollView.contentSize
             let textStorage = NSTextStorage()
 
@@ -222,7 +242,7 @@ public extension HighlightedTextEditor {
 
             layoutManager.addTextContainer(textContainer)
 
-            let textView = NSTextView(frame: .zero, textContainer: textContainer)
+            let textView = CustomTextView(frame: .zero, textContainer: textContainer)
             textView.autoresizingMask = .width
             textView.backgroundColor = NSColor.textBackgroundColor
             textView.delegate = self.delegate
@@ -327,6 +347,12 @@ public extension HighlightedTextEditor {
     public func onPaste(_ callback: @escaping OnPasteCallback) -> Self {
         var editor = self
         editor.onPaste = callback
+        return editor
+    }
+
+    func pasteboardTypes(_ types: [NSPasteboard.PasteboardType]) -> Self {
+        var editor = self
+        editor.pasteboardTypes = types
         return editor
     }
 }
