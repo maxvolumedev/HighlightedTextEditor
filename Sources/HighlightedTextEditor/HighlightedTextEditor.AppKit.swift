@@ -26,6 +26,8 @@ public struct HighlightedTextEditor: NSViewRepresentable, HighlightingTextEditor
 
     let highlightRules: [HighlightRule]
 
+    var selection: Binding<NSRange>?
+
     private(set) var onEditingChanged: OnEditingChangedCallback?
     private(set) var onCommit: OnCommitCallback?
     private(set) var onTextChange: OnTextChangeCallback?
@@ -34,10 +36,12 @@ public struct HighlightedTextEditor: NSViewRepresentable, HighlightingTextEditor
 
     public init(
         text: Binding<String>,
-        highlightRules: [HighlightRule]
+        highlightRules: [HighlightRule],
+        selection: Binding<NSRange>? = nil
     ) {
         _text = text
         self.highlightRules = highlightRules
+        self.selection = selection
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -63,7 +67,14 @@ public struct HighlightedTextEditor: NSViewRepresentable, HighlightingTextEditor
 
         view.attributedText = highlightedText
         runIntrospect(view)
-        view.selectedRanges = context.coordinator.selectedRanges
+
+        // Update selection from binding if provided
+        if let selection = selection {
+            view.selectedRanges = [NSValue(range: selection.wrappedValue)]
+        } else {
+            view.selectedRanges = context.coordinator.selectedRanges
+        }
+
         view.textView.typingAttributes = typingAttributes
         context.coordinator.updatingNSView = false
     }
@@ -112,13 +123,23 @@ public extension HighlightedTextEditor {
 
         public func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView,
-                  let onSelectionChange = parent.onSelectionChange,
                   !updatingNSView,
                   let ranges = textView.selectedRanges as? [NSRange]
             else { return }
             selectedRanges = textView.selectedRanges
-            DispatchQueue.main.async {
-                onSelectionChange(ranges)
+
+            // Update binding if provided
+            if let selection = parent.selection, let firstRange = ranges.first {
+                DispatchQueue.main.async {
+                    selection.wrappedValue = firstRange
+                }
+            }
+
+            // Call onSelectionChange callback
+            if let onSelectionChange = parent.onSelectionChange {
+                DispatchQueue.main.async {
+                    onSelectionChange(ranges)
+                }
             }
         }
 
@@ -275,6 +296,25 @@ public extension HighlightedTextEditor {
             callback(range)
         }
         return editor
+    }
+
+    func selection(_ binding: Binding<NSRange>) -> Self {
+        var editor = self
+        editor.selection = binding
+        return editor
+    }
+}
+
+// MARK: - Convenience extensions for cursor positioning
+public extension HighlightedTextEditor {
+    /// Set cursor to a specific position (zero-length selection)
+    static func cursorPosition(at location: Int) -> NSRange {
+        return NSRange(location: location, length: 0)
+    }
+
+    /// Set selection range
+    static func selectionRange(location: Int, length: Int) -> NSRange {
+        return NSRange(location: location, length: length)
     }
 }
 #endif
